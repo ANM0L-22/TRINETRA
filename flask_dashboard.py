@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Simple Flask Dashboard for Vehicle Detection System
-Provides web interface for viewing detection results
+Provides web interface for viewing detection results but is not integerated 
 """
 
 from flask import Flask, render_template, jsonify, request
