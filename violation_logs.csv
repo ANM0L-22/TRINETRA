@@ -1,0 +1,3 @@
+time,vehicle_type,track_id,violation,plate_text,evidence_img,plate_img
+20260129_123822,bus,8,WRONG_SIDE,NA,violations/wrongside_bus_id8_20260129_123822.jpg,plates/plate_bus_id8_20260129_123822.jpg
+20260129_123824,car,7,WRONG_SIDE,NA,violations/wrongside_car_id7_20260129_123824.jpg,plates/plate_car_id7_20260129_123824.jpg
