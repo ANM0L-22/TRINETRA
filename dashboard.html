@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trinetra AI Dashboard</title>
+
+<style>
+
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Arial, Helvetica, sans-serif;
+}
+
+body{
+display:flex;
+background:#0f172a;
+color:white;
+}
+
+/* Sidebar */
+
+.sidebar{
+width:230px;
+height:100vh;
+background:#020617;
+padding:20px;
+position:fixed;
+}
+
+.logo{
+font-size:22px;
+font-weight:bold;
+margin-bottom:40px;
+color:#38bdf8;
+}
+
+.sidebar ul{
+list-style:none;
+}
+
+.sidebar ul li{
+padding:12px;
+margin:10px 0;
+cursor:pointer;
+border-radius:6px;
+transition:0.3s;
+}
+
+.sidebar ul li:hover{
+background:#1e293b;
+}
+
+/* Main */
+
+.main{
+margin-left:230px;
+width:100%;
+padding:20px;
+}
+
+/* Navbar */
+
+.navbar{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:25px;
+}
+
+.navbar h2{
+font-weight:600;
+}
+
+.user{
+background:#1e293b;
+padding:8px 15px;
+border-radius:20px;
+}
+
+/* Dashboard Cards */
+
+.cards{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+gap:20px;
+margin-bottom:30px;
+}
+
+.card{
+background:#1e293b;
+padding:20px;
+border-radius:10px;
+transition:0.3s;
+}
+
+.card:hover{
+transform:translateY(-5px);
+box-shadow:0 10px 20px rgba(0,0,0,0.4);
+}
+
+.card h3{
+margin-bottom:10px;
+font-size:16px;
+color:#94a3b8;
+}
+
+.card p{
+font-size:28px;
+font-weight:bold;
+}
+
+/* Cameras */
+
+.cameras{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+gap:20px;
+margin-bottom:30px;
+}
+
+.camera{
+background:#1e293b;
+padding:15px;
+border-radius:10px;
+}
+
+.camera video{
+width:100%;
+border-radius:8px;
+background:black;
+height:180px;
+}
+
+.camera h4{
+margin-top:10px;
+}
+
+/* Alerts */
+
+.alerts{
+background:#1e293b;
+padding:20px;
+border-radius:10px;
+}
+
+.alert{
+padding:10px;
+margin:10px 0;
+border-left:4px solid red;
+background:#0f172a;
+}
+
+.alert.warning{
+border-color:orange;
+}
+
+.alert.success{
+border-color:lime;
+}
+
+/* Activity Logs */
+
+.logs{
+margin-top:20px;
+}
+
+.log{
+background:#0f172a;
+padding:10px;
+margin:8px 0;
+border-radius:6px;
+font-size:14px;
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- Sidebar -->
+
+<div class="sidebar">
+
+<div class="logo">TRINETRA</div>
+
+<ul>
+<li>Dashboard</li>
+<li>Live Cameras</li>
+<li>AI Detection</li>
+<li>Face Recognition</li>
+<li>Noise Detection</li>
+<li>Reports</li>
+<li>Settings</li>
+<li>Logout</li>
+</ul>
+
+</div>
+
+<!-- Main Content -->
+
+<div class="main">
+
+<!-- Navbar -->
+
+<div class="navbar">
+<h2>AI Surveillance Dashboard</h2>
+<div class="user">Admin</div>
+</div>
+
+<!-- Cards -->
+
+<div class="cards">
+
+<div class="card">
+<h3>Total Cameras</h3>
+<p>12</p>
+</div>
+
+<div class="card">
+<h3>Active Alerts</h3>
+<p id="alerts">3</p>
+</div>
+
+<div class="card">
+<h3>People Detected</h3>
+<p id="people">27</p>
+</div>
+
+<div class="card">
+<h3>Suspicious Activity</h3>
+<p id="suspicious">2</p>
+</div>
+
+</div>
+
+<!-- Camera Section -->
+
+<h2 style="margin-bottom:15px;">Live Cameras</h2>
+
+<div class="cameras">
+
+<div class="camera">
+<video autoplay muted></video>
+<h4>Camera 1 - Entrance</h4>
+</div>
+
+<div class="camera">
+<video autoplay muted></video>
+<h4>Camera 2 - Parking</h4>
+</div>
+
+<div class="camera">
+<video autoplay muted></video>
+<h4>Camera 3 - Corridor</h4>
+</div>
+
+</div>
+
+<!-- Alerts -->
+
+<h2 style="margin-bottom:15px;">AI Alerts</h2>
+
+<div class="alerts">
+
+<div class="alert">
+⚠ Suspicious movement detected
+</div>
+
+<div class="alert warning">
+🔊 Loud noise detected
+</div>
+
+<div class="alert success">
+✔ Camera 2 reconnected
+</div>
+
+</div>
+
+<!-- Logs -->
+
+<h2 style="margin-top:30px;">Activity Logs</h2>
+
+<div class="logs">
+
+<div class="log">
+10:21 AM - Face recognized: Employee ID 102
+</div>
+
+<div class="log">
+10:19 AM - Motion detected at Parking
+</div>
+
+<div class="log">
+10:15 AM - Camera 3 started recording
+</div>
+
+</div>
+
+</div>
+
+<script>
+
+/* Simulated AI updates */
+
+setInterval(()=>{
+document.getElementById("people").innerText = Math.floor(Math.random()*50)
+document.getElementById("alerts").innerText = Math.floor(Math.random()*5)
+document.getElementById("suspicious").innerText = Math.floor(Math.random()*3)
+},4000)
+
+</script>
+
+</body>
+</html>
