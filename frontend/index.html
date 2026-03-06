@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TRINETRA - AI Traffic Command Center</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script defer src="script.js"></script>
+</head>
+<body>git 
+
+<div class="container">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <h1 class="logo">TRINETRA</h1>
+      <button id="sidebarToggle" aria-label="Toggle navigation" class="hamburger">☰</button>
+    </div>
+
+    <nav>
+      <ul>
+        <li class="active">Dashboard</li>
+        <li>Live Feed</li>
+        <li>Violations</li>
+        <li>Analytics</li>
+        <li>Reports</li>
+        <li>Settings</li>
+      </ul>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <header class="topbar">
+      <div class="top-left">
+        <h2>AI Traffic Command Center</h2>
+        <div class="status">
+          <span class="dot"></span>
+          <span class="status-text">System Active</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <label class="search">
+          <input type="search" placeholder="Search cameras, reports...">
+        </label>
+        <button id="themeToggle" class="icon-btn" aria-label="Toggle theme">🌓</button>
+        <div class="avatar">G</div>
+      </div>
+    </header>
+
+    <!-- Stats Cards -->
+    <section class="cards" aria-label="Key metrics">
+      <article class="card">
+        <h3>Vehicles Detected</h3>
+        <p class="counter" data-target="1245">0</p>
+        <small class="muted">since 00:00</small>
+      </article>
+
+      <article class="card">
+        <h3>Violations Today</h3>
+        <p class="counter" data-target="89">0</p>
+        <small class="muted">camera reports</small>
+      </article>
+
+      <article class="card">
+        <h3>Traffic Density</h3>
+        <p class="big">72%</p>
+        <small class="muted">city average</small>
+      </article>
+
+      <article class="card">
+        <h3>Active Cameras</h3>
+        <p class="big">16</p>
+        <small class="muted">online</small>
+      </article>
+    </section>
+
+    <!-- Chart Section -->
+    <section class="chart-section">
+      <h3>Hourly Traffic Flow</h3>
+      <div class="canvas-wrap">
+        <canvas id="trafficChart" aria-label="Traffic chart" role="img"></canvas>
+      </div>
+    </section>
+    <!-- Camera / Live Feed -->
+    <section class="camera-section">
+      <div class="section-head">
+        <h3>Cameras & Live Feed</h3>
+        <small class="muted">Latest status from edge devices</small>
+      </div>
+      <div class="cameras" id="cameras">
+        <!-- cameras injected by script -->
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+</body>
+</html>
