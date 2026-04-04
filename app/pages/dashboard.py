@@ -16,7 +16,12 @@ from datetime import datetime
 from collections import Counter
 from pathlib import Path
 
-import cv2
+try:
+    import cv2
+    _CV2_AVAILABLE = True
+except Exception:
+    cv2 = None
+    _CV2_AVAILABLE = False
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
@@ -114,6 +119,12 @@ def _init():
 def dashboard():
     _init()
     st.markdown(get_global_css(), unsafe_allow_html=True)
+
+    if not _CV2_AVAILABLE:
+        st.warning(
+            "OpenCV is not available in this deployment environment, so video and image analysis are disabled until cv2 can be imported."
+        )
+
     st.markdown("""
     <style>
     /* Extra dashboard CSS */
@@ -247,16 +258,19 @@ def dashboard():
                 st.session_state.video_info = None  # No video info for images
                 st.session_state.bulk_ready = True
                 # Analyze the image as frame 0
-                frame_bgr = cv2.imread(str(save_path))
-                if frame_bgr is not None:
-                    fd = analyze_frame(frame_bgr, 0, 1)
-                    if fd:
-                        fd["frame_id"] = 0
-                        st.session_state.frame_data = fd
-                        st.session_state.bulk_data = [fd]  # Single frame data
-                        st.session_state.viol_log = []
-                        st.session_state.viol_keys = set()
-                        _append_violations(fd.get("violations", []))
+                if cv2 is not None:
+                    frame_bgr = cv2.imread(str(save_path))
+                    if frame_bgr is not None:
+                        fd = analyze_frame(frame_bgr, 0, 1)
+                        if fd:
+                            fd["frame_id"] = 0
+                            st.session_state.frame_data = fd
+                            st.session_state.bulk_data = [fd]  # Single frame data
+                            st.session_state.viol_log = []
+                            st.session_state.viol_keys = set()
+                            _append_violations(fd.get("violations", []))
+                else:
+                    st.error("OpenCV is not available, so image analysis cannot run in this deployment.")
                 st.session_state.current_frame = 0
                 reset_engine_state()
             else:

@@ -4,7 +4,12 @@ Provides unified interface to real YOLOv8 + OCR + Violation detection.
 Replaces the old random simulation engine with production-ready code.
 """
 
-import cv2
+try:
+    import cv2
+    _CV2_AVAILABLE = True
+except Exception:
+    cv2 = None
+    _CV2_AVAILABLE = False
 import numpy as np
 import base64
 from typing import Optional, Dict, List
@@ -47,6 +52,23 @@ def analyze_frame(frame_bgr: np.ndarray, frame_id: int, total_frames: int) -> di
     """
     Full frame analysis with real detection using YOLOv8 + OCR + Violation detection.
     """
+    if not _CV2_AVAILABLE:
+        return {
+            "frame_id": frame_id,
+            "total": total_frames,
+            "n_vehicles": 0,
+            "density": 0.0,
+            "congestion": "LOW",
+            "vehicles": [],
+            "persons": [],
+            "violations": [],
+            "plates": [],
+            "counts": {},
+            "fps": 0.0,
+            "proc_ms": 0.0,
+            "frame_b64": "",
+        }
+
     engine = _get_engine()
     if engine is not None:
         try:
@@ -90,6 +112,9 @@ def analyze_frame(frame_bgr: np.ndarray, frame_id: int, total_frames: int) -> di
 
 def get_frame_at(video_path: str, frame_index: int) -> Optional[Dict]:
     """Get analyzed frame at specific index."""
+    if not _CV2_AVAILABLE:
+        return None
+
     engine = _get_engine()
     if engine is not None:
         try:
@@ -112,6 +137,9 @@ def get_frame_at(video_path: str, frame_index: int) -> Optional[Dict]:
 
 def get_video_info(video_path: str) -> Dict:
     """Get video metadata."""
+    if not _CV2_AVAILABLE:
+        return {}
+
     engine = _get_engine()
     if engine is not None:
         try:
@@ -141,6 +169,9 @@ def get_video_info(video_path: str) -> Dict:
 
 def bulk_analyze(video_path: str, max_samples: int = 180) -> List[Dict]:
     """Analyze sampled frames across entire video."""
+    if not _CV2_AVAILABLE:
+        return []
+
     engine = _get_engine()
     if engine is not None:
         try:

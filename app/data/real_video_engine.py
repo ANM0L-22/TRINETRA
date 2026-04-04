@@ -3,7 +3,12 @@ Trinetra — Real Video Processing Engine
 Processes real uploaded video frame-by-frame with actual detection, OCR, and violation detection.
 """
 
-import cv2
+try:
+    import cv2
+    _CV2_AVAILABLE = True
+except Exception:
+    cv2 = None
+    _CV2_AVAILABLE = False
 import numpy as np
 import base64
 from typing import Dict, List, Optional, Tuple
@@ -59,6 +64,23 @@ class RealVideoEngine:
         Full frame analysis with real detection.
         Returns annotated frame as base64 JPEG + structured data.
         """
+        if not _CV2_AVAILABLE:
+            return {
+                "frame_id": frame_id,
+                "total": total_frames,
+                "n_vehicles": 0,
+                "density": 0.0,
+                "congestion": "LOW",
+                "vehicles": [],
+                "persons": [],
+                "violations": [],
+                "plates": [],
+                "counts": {},
+                "fps": 0.0,
+                "proc_ms": 0.0,
+                "frame_b64": "",
+            }
+
         h, w = frame_bgr.shape[:2]
         annotated = frame_bgr.copy()
         
@@ -248,6 +270,9 @@ class RealVideoEngine:
     
     def get_frame_at(self, video_path: str, frame_index: int) -> Optional[Dict]:
         """Get analyzed frame at specific index."""
+        if not _CV2_AVAILABLE:
+            return None
+
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             return None
@@ -264,6 +289,9 @@ class RealVideoEngine:
     
     def get_video_info(self, video_path: str) -> Dict:
         """Get video metadata."""
+        if not _CV2_AVAILABLE:
+            return {}
+
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             return {}
@@ -286,6 +314,9 @@ class RealVideoEngine:
     
     def bulk_analyze(self, video_path: str, max_samples: int = 180) -> List[Dict]:
         """Analyze sampled frames across entire video."""
+        if not _CV2_AVAILABLE:
+            return []
+
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             return []
