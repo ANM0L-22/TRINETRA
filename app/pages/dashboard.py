@@ -120,11 +120,6 @@ def dashboard():
     _init()
     st.markdown(get_global_css(), unsafe_allow_html=True)
 
-    if not _CV2_AVAILABLE:
-        st.warning(
-            "OpenCV is not available in this deployment environment, so video and image analysis are disabled until cv2 can be imported."
-        )
-
     st.markdown("""
     <style>
     /* Extra dashboard CSS */
