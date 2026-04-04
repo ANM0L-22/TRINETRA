@@ -1,0 +1,75 @@
+# ============================================================
+# Trinetra — Master Configuration
+# ============================================================
+
+project:
+  name: trinetra
+  version: "1.0.0"
+
+# ── Classes ─────────────────────────────────────────────────
+classes:
+  - car
+  - bus
+  - bike           # motorcycle / scooter / 2-wheeler
+  - truck
+  - auto_rickshaw
+  - pedestrian
+
+num_classes: 6
+
+# ── Dataset paths ────────────────────────────────────────────
+data:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  images:
+    train: data/processed/images/train
+    val:   data/processed/images/val
+    test:  data/processed/images/test
+  labels:
+    train: data/processed/labels/train
+    val:   data/processed/labels/val
+    test:  data/processed/labels/test
+
+# ── Model ────────────────────────────────────────────────────
+model:
+  backbone: yolov8m           # n / s / m / l / x  (m = best balance)
+  weights_dir: models/weights
+  exports_dir: models/exports
+  pretrained: true            # start from COCO pretrained weights
+
+# ── Training (run on Colab) ──────────────────────────────────
+training:
+  epochs: 100
+  batch_size: 16
+  image_size: 640
+  lr0: 0.01                  # initial learning rate
+  lrf: 0.01                  # final lr = lr0 * lrf
+  momentum: 0.937
+  weight_decay: 0.0005
+  patience: 20               # early stopping patience
+  optimizer: SGD
+  device: 0                  # 0 = GPU, cpu = CPU
+  workers: 4
+  augment: true
+  project: runs/detect
+  name: trinetra_v1
+
+# ── Inference (local VS Code) ────────────────────────────────
+inference:
+  conf_threshold: 0.45
+  iou_threshold: 0.5
+  device: cpu                # local inference on CPU
+  image_size: 640
+  max_det: 100
+
+# ── Tracking ─────────────────────────────────────────────────
+tracking:
+  max_age: 30                # frames before track is deleted
+  min_hits: 3
+  iou_threshold: 0.3
+
+# ── Results ──────────────────────────────────────────────────
+results:
+  detections_dir: results/detections
+  violations_dir: results/violations
+  reports_dir:    results/reports

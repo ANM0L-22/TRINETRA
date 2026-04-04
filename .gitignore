@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+venv/
+.env
+
+# Data (don't commit raw/processed images)
+data/raw/
+data/processed/
+
+# Model weights (large files)
+models/weights/*.pt
+models/exports/
+
+# Training runs
+runs/
+
+# Results
+results/detections/
+results/violations/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

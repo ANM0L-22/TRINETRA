@@ -1,0 +1,16 @@
+# YOLOv8 dataset config — Trinetra vehicle detection
+# Used during training (on Colab, update 'path' to absolute Colab path)
+
+path: data/processed        # root dataset dir (relative to project root)
+train: images/train
+val:   images/val
+test:  images/test
+
+nc: 6
+names:
+  - car
+  - bus
+  - bike
+  - truck
+  - auto_rickshaw
+  - pedestrian
