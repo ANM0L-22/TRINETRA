@@ -16,6 +16,11 @@ from typing import Optional, Dict, List
 from app.data.simulator import get_frame_data as _sim_get_frame_data
 
 try:
+    from PIL import Image
+except Exception:
+    Image = None  # type: ignore
+
+try:
     import imageio.v2 as imageio  # type: ignore
 except Exception:
     imageio = None  # type: ignore
@@ -24,10 +29,34 @@ except Exception:
 def _encode_frame_b64(frame_bgr: np.ndarray) -> str:
     """Encode BGR frame to base64 JPEG."""
     if cv2 is None:
-        return ""
+        if Image is None:
+            return ""
+        try:
+            # frame_bgr is expected in BGR order; convert to RGB for Pillow.
+            frame_rgb = frame_bgr[:, :, ::-1] if frame_bgr.ndim == 3 and frame_bgr.shape[2] >= 3 else frame_bgr
+            img = Image.fromarray(frame_rgb.astype(np.uint8))
+            from io import BytesIO
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            return base64.b64encode(buf.getvalue()).decode()
+        except Exception as e:
+            print(f"Pillow frame encode failed: {e}")
+            return ""
+
     ok, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
     if not ok:
-        return ""
+        if Image is None:
+            return ""
+        try:
+            frame_rgb = frame_bgr[:, :, ::-1] if frame_bgr.ndim == 3 and frame_bgr.shape[2] >= 3 else frame_bgr
+            img = Image.fromarray(frame_rgb.astype(np.uint8))
+            from io import BytesIO
+            bio = BytesIO()
+            img.save(bio, format="JPEG", quality=85)
+            return base64.b64encode(bio.getvalue()).decode()
+        except Exception as e:
+            print(f"Fallback encode failed: {e}")
+            return ""
     return base64.b64encode(buf.tobytes()).decode()
 
 
