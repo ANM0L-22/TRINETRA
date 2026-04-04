@@ -13,6 +13,11 @@ import numpy as np
 import base64
 from typing import Optional, Dict, List
 
+try:
+    import imageio.v2 as imageio  # type: ignore
+except Exception:
+    imageio = None  # type: ignore
+
 
 def _encode_frame_b64(frame_bgr: np.ndarray) -> str:
     """Encode BGR frame to base64 JPEG."""
@@ -62,6 +67,53 @@ def _fallback_frame_payload(frame_bgr: np.ndarray, frame_id: int, total_frames: 
         "frame_b64": _encode_frame_b64(frame_bgr),
         "analysis_error": error_msg,
     }
+
+
+def _read_frame_with_imageio(video_path: str, frame_index: int) -> Optional[tuple[np.ndarray, int]]:
+    """Read a frame via imageio/ffmpeg when OpenCV cannot decode the source."""
+    if imageio is None:
+        return None
+
+    try:
+        reader = imageio.get_reader(video_path)
+    except Exception as e:
+        print(f"imageio reader open failed: {e}")
+        return None
+
+    total = 0
+    try:
+        meta = reader.get_meta_data()
+        total = int(meta.get("nframes") or 0)
+    except Exception:
+        total = 0
+
+    try:
+        frame_rgb = reader.get_data(frame_index)
+    except Exception as e:
+        print(f"imageio frame read failed: {e}")
+        try:
+            reader.close()
+        except Exception:
+            pass
+        return None
+
+    try:
+        reader.close()
+    except Exception:
+        pass
+
+    if frame_rgb is None:
+        return None
+
+    if frame_rgb.ndim == 3 and frame_rgb.shape[2] >= 3:
+        if cv2 is not None:
+            frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+        else:
+            frame_bgr = frame_rgb[:, :, ::-1]
+    else:
+        frame_bgr = frame_rgb
+
+    return frame_bgr, total
 
 # Try to import real engine, fallback to old simulation if not available
 try:
@@ -137,16 +189,27 @@ def get_frame_at(video_path: str, frame_index: int) -> Optional[Dict]:
     
     # Fallback
     if cv2 is None:
-        return None
+        fallback = _read_frame_with_imageio(video_path, frame_index)
+        if fallback is None:
+            return None
+        frame, total = fallback
+        total = total or max(frame_index + 1, 1)
+        return analyze_frame(frame, frame_index, total)
+
     cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
+    if cap.isOpened():
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        ret, frame = cap.read()
+        cap.release()
+        if ret:
+            return analyze_frame(frame, frame_index, total)
+
+    fallback = _read_frame_with_imageio(video_path, frame_index)
+    if fallback is None:
         return None
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        return None
+    frame, total = fallback
+    total = total or max(frame_index + 1, 1)
     return analyze_frame(frame, frame_index, total)
 
 
@@ -161,24 +224,69 @@ def get_video_info(video_path: str) -> Dict:
     
     # Fallback
     if cv2 is None:
-        return {}
+        if imageio is None:
+            return {}
+        try:
+            reader = imageio.get_reader(video_path)
+            meta = reader.get_meta_data()
+            total = int(meta.get("nframes") or 0)
+            fps = float(meta.get("fps") or 25.0)
+            size = meta.get("size") or (0, 0)
+            w, h = int(size[0]), int(size[1])
+            dur = total / max(fps, 1)
+            reader.close()
+            return {
+                "total_frames": total,
+                "fps": round(fps, 2),
+                "width": w,
+                "height": h,
+                "duration_s": round(dur, 2),
+                "duration_str": f"{int(dur//60)}:{int(dur%60):02d}",
+            }
+        except Exception as e:
+            print(f"imageio video info failed: {e}")
+            return {}
+
     cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
+    if cap.isOpened():
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        dur = total / max(fps, 1)
+        cap.release()
+        return {
+            "total_frames": total,
+            "fps": round(fps, 2),
+            "width": w,
+            "height": h,
+            "duration_s": round(dur, 2),
+            "duration_str": f"{int(dur//60)}:{int(dur%60):02d}",
+        }
+
+    if imageio is None:
         return {}
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    dur = total / max(fps, 1)
-    cap.release()
-    return {
-        "total_frames": total,
-        "fps": round(fps, 2),
-        "width": w,
-        "height": h,
-        "duration_s": round(dur, 2),
-        "duration_str": f"{int(dur//60)}:{int(dur%60):02d}",
-    }
+
+    try:
+        reader = imageio.get_reader(video_path)
+        meta = reader.get_meta_data()
+        total = int(meta.get("nframes") or 0)
+        fps = float(meta.get("fps") or 25.0)
+        size = meta.get("size") or (0, 0)
+        w, h = int(size[0]), int(size[1])
+        dur = total / max(fps, 1)
+        reader.close()
+        return {
+            "total_frames": total,
+            "fps": round(fps, 2),
+            "width": w,
+            "height": h,
+            "duration_s": round(dur, 2),
+            "duration_str": f"{int(dur//60)}:{int(dur%60):02d}",
+        }
+    except Exception as e:
+        print(f"imageio fallback video info failed: {e}")
+        return {}
 
 
 def bulk_analyze(video_path: str, max_samples: int = 180) -> List[Dict]:
