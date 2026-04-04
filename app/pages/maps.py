@@ -162,7 +162,7 @@ def maps_page():
     deck = pdk.Deck(
         layers=active_layers,
         initial_view_state=view_state,
-        tooltip=tooltip,
+        tooltip=tooltip,  # type: ignore[arg-type]
         map_style="mapbox://styles/mapbox/dark-v11",
         map_provider="mapbox",
     )
@@ -188,6 +188,6 @@ def maps_page():
         return colors.get(val, "")
 
     st.dataframe(
-        display.style.applymap(color_congestion, subset=["Congestion"]),
+        display.style.map(color_congestion, subset=["Congestion"]),
         use_container_width=True, hide_index=True, height=320,
     )

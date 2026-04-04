@@ -3,18 +3,12 @@ Trinetra — Real Video Processing Engine
 Processes real uploaded video frame-by-frame with actual detection, OCR, and violation detection.
 """
 
-try:
-    import cv2
-    _CV2_AVAILABLE = True
-except Exception:
-    cv2 = None
-    _CV2_AVAILABLE = False
+import cv2
 import numpy as np
 import base64
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import time
-from collections import defaultdict
 
 from src.tracking.tracker import VehicleTracker
 from src.detection.detector import Detection
@@ -52,35 +46,12 @@ class RealVideoEngine:
                     self.violation_detector = RealViolationDetector()
             except Exception as e:
                 print(f"Failed to initialize detectors: {e}")
-
-    def reset(self):
-        """Reset tracker and violation state for a new video."""
-        self.tracker = VehicleTracker()
-        if self.violation_detector is not None:
-            self.violation_detector.reported_violations = defaultdict(set)
-
+    
     def analyze_frame(self, frame_bgr: np.ndarray, frame_id: int, total_frames: int) -> Dict:
         """
         Full frame analysis with real detection.
         Returns annotated frame as base64 JPEG + structured data.
         """
-        if not _CV2_AVAILABLE:
-            return {
-                "frame_id": frame_id,
-                "total": total_frames,
-                "n_vehicles": 0,
-                "density": 0.0,
-                "congestion": "LOW",
-                "vehicles": [],
-                "persons": [],
-                "violations": [],
-                "plates": [],
-                "counts": {},
-                "fps": 0.0,
-                "proc_ms": 0.0,
-                "frame_b64": "",
-            }
-
         h, w = frame_bgr.shape[:2]
         annotated = frame_bgr.copy()
         
@@ -117,24 +88,7 @@ class RealVideoEngine:
 
         # 2. Real plate recognition
         plates = self.ocr.detect_and_recognize_plates(frame_bgr, vehicles) if self.ocr else []
-
-        # Attach recognized plates back to vehicle detections for UI display
-        for plate_info in plates:
-            matched_vehicle = None
-            if plate_info.get("track_id") is not None:
-                for v in vehicles:
-                    if v.get("track_id") == plate_info["track_id"]:
-                        matched_vehicle = v
-                        break
-            if matched_vehicle is None:
-                for v in vehicles:
-                    if v.get("bbox") == plate_info.get("vehicle_bbox"):
-                        matched_vehicle = v
-                        break
-            if matched_vehicle is not None:
-                matched_vehicle["plate"] = plate_info.get("plate") or plate_info.get("raw_text") or "UNKNOWN"
-                matched_vehicle["plate_confidence"] = plate_info.get("confidence", 0.0)
-
+        
         # 3. Real violation detection
         violations = []
         if self.violation_detector:
@@ -270,9 +224,6 @@ class RealVideoEngine:
     
     def get_frame_at(self, video_path: str, frame_index: int) -> Optional[Dict]:
         """Get analyzed frame at specific index."""
-        if not _CV2_AVAILABLE:
-            return None
-
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             return None
@@ -289,9 +240,6 @@ class RealVideoEngine:
     
     def get_video_info(self, video_path: str) -> Dict:
         """Get video metadata."""
-        if not _CV2_AVAILABLE:
-            return {}
-
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             return {}
@@ -314,9 +262,6 @@ class RealVideoEngine:
     
     def bulk_analyze(self, video_path: str, max_samples: int = 180) -> List[Dict]:
         """Analyze sampled frames across entire video."""
-        if not _CV2_AVAILABLE:
-            return []
-
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             return []

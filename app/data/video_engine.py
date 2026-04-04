@@ -29,12 +29,14 @@ _engine_instance = None
 
 
 def reset_engine_state() -> None:
-    """Reset cached engine state when a new video is loaded."""
+    """Reset cached engine state when a new video/image is loaded."""
     global _engine_instance
 
-    if _engine_instance is not None and hasattr(_engine_instance, "reset"):
+    if _engine_instance is not None:
         try:
-            _engine_instance.reset()
+            reset_fn = getattr(_engine_instance, "reset", None)
+            if callable(reset_fn):
+                reset_fn()
         except Exception as e:
             print(f"Engine reset failed: {e}")
 

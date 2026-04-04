@@ -422,7 +422,7 @@ def dashboard():
             # For images, single re-analyse button
             if st.button("🔄 Re-analyse Image", use_container_width=True, key="btn_reanal_img"):
                 if st.session_state.video_path:
-                    frame_bgr = cv2.imread(st.session_state.video_path)
+                    frame_bgr = cv2.imread(st.session_state.video_path) if cv2 is not None else None
                     if frame_bgr is not None:
                         fd_new = analyze_frame(frame_bgr, 0, 1)
                         if fd_new:
