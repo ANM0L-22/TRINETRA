@@ -9,7 +9,6 @@ Layer 3:           Full scrollable analytics — charts, class dist, density, de
 import os
 import time
 import tempfile
-import threading
 import random
 import math
 from datetime import datetime
@@ -279,12 +278,12 @@ def dashboard():
                 st.session_state.viol_log = []
                 st.session_state.viol_keys = set()
                 reset_engine_state()
-                # Bulk analyze in thread
-                def _bg():
+                # Run bulk analysis on the main script context; touching session_state
+                # from background threads causes missing ScriptRunContext on Streamlit Cloud.
+                with st.spinner("Analyzing uploaded video samples..."):
                     data = bulk_analyze(str(save_path), max_samples=180)
-                    st.session_state["bulk_data"] = data
-                    st.session_state["bulk_ready"] = True
-                threading.Thread(target=_bg, daemon=True).start()
+                st.session_state.bulk_data = data
+                st.session_state.bulk_ready = True
             st.rerun()
 
     # ── LAYER 1 CENTER: Video/Image panel ───────────────────────────
@@ -397,14 +396,14 @@ def dashboard():
         if not is_image:
             c1, c2, c3 = st.columns(3)
             with c1:
-                if st.button("▶ Analyse Frame", use_container_width=True, key="btn_anal"):
+                if st.button("▶ Analyse Frame", width="stretch", key="btn_anal"):
                     if st.session_state.video_path:
                         fd_new = get_frame_at(st.session_state.video_path, frame_num)
                         if fd_new:
                             st.session_state.frame_data = fd_new
                             _append_violations(fd_new.get("violations", []))
             with c2:
-                if st.button("⏭ Next Frame", use_container_width=True, key="btn_next"):
+                if st.button("⏭ Next Frame", width="stretch", key="btn_next"):
                     nxt = min(frame_num + 1, total_frames - 1)
                     st.session_state.current_frame = nxt
                     st.session_state.frame_data = None
@@ -414,13 +413,13 @@ def dashboard():
                             st.session_state.frame_data = fd_next
                             _append_violations(fd_next.get("violations", []))
             with c3:
-                if st.button("🔄 Refresh All", use_container_width=True, key="btn_ref"):
+                if st.button("🔄 Refresh All", width="stretch", key="btn_ref"):
                     st.session_state.frame_data = None
                     st.session_state.viol_log = []
                     st.session_state.viol_keys = set()
         else:
             # For images, single re-analyse button
-            if st.button("🔄 Re-analyse Image", use_container_width=True, key="btn_reanal_img"):
+            if st.button("🔄 Re-analyse Image", width="stretch", key="btn_reanal_img"):
                 if st.session_state.video_path:
                     frame_bgr = cv2.imread(st.session_state.video_path) if cv2 is not None else None
                     if frame_bgr is not None:
@@ -459,7 +458,7 @@ def dashboard():
             cong_v = fd.get("congestion", "MEDIUM")
 
             st.plotly_chart(_gauge_fig(fps_v, "FPS", "#00e5ff"),
-                             use_container_width=True,
+                             width='stretch',
                              config={"displayModeBar": False}, key="g_fps")
             st.markdown(f"""
             <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
@@ -507,7 +506,7 @@ def dashboard():
                 ))
                 layout_cfg = {**_dark_fig(), 'height': 200, 'bargap': 0.25, 'xaxis': dict(tickfont=dict(size=8), showgrid=False)}
                 fig.update_layout(layout_cfg)  # type: ignore
-                st.plotly_chart(fig, use_container_width=True,
+                st.plotly_chart(fig, width='stretch',
                                  config={"displayModeBar": False}, key="viol_bar_l1")
             else:
                 st.info("No violations yet — analyse frames to detect")
@@ -582,7 +581,7 @@ def dashboard():
         </div>
         """, unsafe_allow_html=True)
 
-        if st.button("➕ Add New Intersection", use_container_width=True, key="btn_add_int"):
+        if st.button("➕ Add New Intersection", width='stretch', key="btn_add_int"):
             st.toast("Feature available in production deployment", icon="ℹ️")
 
         st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
@@ -663,7 +662,7 @@ def dashboard():
             fig_vc.update_layout(**_dark_fig(), height=140,  # type: ignore
                                   title=dict(text="Vehicle Count Over Time",
                                              font=dict(size=10, color="#94a3b8")))
-            st.plotly_chart(fig_vc, use_container_width=True,
+            st.plotly_chart(fig_vc, width='stretch',
                              config={"displayModeBar": False}, key="vc_l2")
 
             den_y = [d["density"] for d in bulk]
@@ -684,7 +683,7 @@ def dashboard():
                                        range=[0, 100],
                                    )
                                    })
-            st.plotly_chart(fig_den, use_container_width=True,
+            st.plotly_chart(fig_den, width='stretch',
                              config={"displayModeBar": False}, key="den_l2")
         else:
             st.info("Analysing video… charts appear after upload")
@@ -729,7 +728,7 @@ def dashboard():
                                legend=dict(bgcolor="rgba(0,0,0,0)",
                                            font=dict(size=9, color="#94a3b8")),
                                font=dict(color="#94a3b8"))
-        st.plotly_chart(fig_pie, use_container_width=True,
+        st.plotly_chart(fig_pie, width='stretch',
                          config={"displayModeBar": False}, key="pie_l2")
 
     # ── L2 CENTER: Live feed with frame slider ─────────────────
@@ -955,7 +954,7 @@ def dashboard():
             fig_a1.update_layout(**_dark_fig(), height=250,  # type: ignore
                                   title=dict(text="Vehicle Count Over Time",
                                              font=dict(size=12, color="#e2e8f0")))
-            st.plotly_chart(fig_a1, use_container_width=True,
+            st.plotly_chart(fig_a1, width='stretch',
                              config={"displayModeBar": False}, key="vc_l3")
 
         with ra2:
@@ -985,7 +984,7 @@ def dashboard():
                                       range=[0, 105],
                                   )
                                   })
-            st.plotly_chart(fig_a2, use_container_width=True,
+            st.plotly_chart(fig_a2, width='stretch',
                              config={"displayModeBar": False}, key="den_l3")
     else:
         st.info("Upload a video to see full analytics")
@@ -1011,7 +1010,7 @@ def dashboard():
                                              font=dict(size=12, color="#e2e8f0")))
             fig_b1.update_layout(xaxis=dict(showgrid=False),
                                   yaxis=dict(showgrid=False, tickfont=dict(size=9)))
-            st.plotly_chart(fig_b1, use_container_width=True,
+            st.plotly_chart(fig_b1, width='stretch',
                              config={"displayModeBar": False}, key="vf_l3")
         else:
             no_viols_html = """
@@ -1041,7 +1040,7 @@ def dashboard():
                               legend=dict(bgcolor="rgba(0,0,0,0)",
                                           font=dict(size=9, color="#94a3b8")),
                               font=dict(color="#94a3b8"))
-        st.plotly_chart(fig_b2, use_container_width=True,
+        st.plotly_chart(fig_b2, width='stretch',
                          config={"displayModeBar": False}, key="cls_l3")
 
     with rb3:
@@ -1060,7 +1059,7 @@ def dashboard():
                               title=dict(text="Congestion Distribution",
                                          font=dict(size=12, color="#e2e8f0")))
         fig_b3.update_layout(xaxis=dict(showgrid=False))
-        st.plotly_chart(fig_b3, use_container_width=True,
+        st.plotly_chart(fig_b3, width='stretch',
                          config={"displayModeBar": False}, key="cng_l3")
 
     # Row C: Speed distribution + AI decision log + plates table
@@ -1087,7 +1086,7 @@ def dashboard():
                                    title=dict(text="Speed Distribution (km/h)",
                                               font=dict(size=12, color="#e2e8f0")),
                                    bargap=0.05)
-            st.plotly_chart(fig_spd, use_container_width=True,
+            st.plotly_chart(fig_spd, width='stretch',
                              config={"displayModeBar": False}, key="spd_l3")
         else:
             st.markdown("""
@@ -1160,3 +1159,4 @@ def dashboard():
         st.info("⏳ Background analysis running — charts will populate automatically")
 
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+

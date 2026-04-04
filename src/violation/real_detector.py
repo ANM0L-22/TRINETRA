@@ -103,7 +103,7 @@ class RealViolationDetector:
         violations.extend(self._detect_no_helmet(frame, vehicles, persons, plates, frame_id))
         
         # 2. Detect tampered plate violations
-        violations.extend(self._detect_tampered_plate(plates))
+        violations.extend(self._detect_tampered_plate(plates, frame_id))
         
         # 3. Detect wrong-side driving
         if wrong_side_lane:
@@ -194,7 +194,7 @@ class RealViolationDetector:
         
         return violations
     
-    def _detect_tampered_plate(self, plates: List[Dict]) -> List[Dict]:
+    def _detect_tampered_plate(self, plates: List[Dict], frame_id: int) -> List[Dict]:
         """Detect tampered/invalid number plates."""
         violations = []
         
