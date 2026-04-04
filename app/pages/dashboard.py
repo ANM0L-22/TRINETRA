@@ -359,6 +359,8 @@ def dashboard():
                                 if key not in st.session_state.viol_keys:
                                     st.session_state.viol_keys.add(key)
                                     st.session_state.viol_log.append(v)
+                        else:
+                            st.warning("Frame analysis failed: unable to decode this frame in deployment environment.")
 
                     fd = st.session_state.get("frame_data", {}) or {}
                     b64 = fd.get("frame_b64", "")
@@ -370,6 +372,12 @@ def dashboard():
                                  style="width:100%;display:block;">
                         </div>
                         """, unsafe_allow_html=True)
+                    else:
+                        err_msg = fd.get("analysis_error")
+                        if err_msg:
+                            st.warning(f"Frame analysis degraded mode: {err_msg}")
+                        else:
+                            st.warning("No renderable frame produced for this selection.")
 
                     hud_den = fd.get("density", 0)
                     hud_veh = fd.get("n_vehicles", 0)
@@ -402,6 +410,8 @@ def dashboard():
                         if fd_new:
                             st.session_state.frame_data = fd_new
                             _append_violations(fd_new.get("violations", []))
+                        else:
+                            st.error("Could not analyze selected frame. Try another frame or re-upload with H.264 MP4.")
             with c2:
                 if st.button("⏭ Next Frame", width="stretch", key="btn_next"):
                     nxt = min(frame_num + 1, total_frames - 1)
@@ -412,6 +422,8 @@ def dashboard():
                         if fd_next:
                             st.session_state.frame_data = fd_next
                             _append_violations(fd_next.get("violations", []))
+                        else:
+                            st.error("Next frame could not be decoded in this environment.")
             with c3:
                 if st.button("🔄 Refresh All", width="stretch", key="btn_ref"):
                     st.session_state.frame_data = None

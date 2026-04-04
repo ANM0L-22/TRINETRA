@@ -13,6 +13,56 @@ import numpy as np
 import base64
 from typing import Optional, Dict, List
 
+
+def _encode_frame_b64(frame_bgr: np.ndarray) -> str:
+    """Encode BGR frame to base64 JPEG."""
+    if cv2 is None:
+        return ""
+    ok, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if not ok:
+        return ""
+    return base64.b64encode(buf.tobytes()).decode()
+
+
+def _fallback_frame_payload(frame_bgr: np.ndarray, frame_id: int, total_frames: int, error_msg: str = "") -> Dict:
+    """Build a safe fallback payload so UI can still render analyzed frame."""
+    density = 0.0
+    congestion = "LOW"
+
+    if cv2 is not None:
+        try:
+            gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(gray, 40, 120)
+            density = float(np.clip(float(np.mean(edges)) / 255.0, 0.0, 1.0))
+            if density < 0.25:
+                congestion = "LOW"
+            elif density < 0.50:
+                congestion = "MEDIUM"
+            elif density < 0.75:
+                congestion = "HIGH"
+            else:
+                congestion = "CRITICAL"
+        except Exception:
+            density = 0.0
+            congestion = "LOW"
+
+    return {
+        "frame_id": frame_id,
+        "total": total_frames,
+        "n_vehicles": 0,
+        "density": round(density, 4),
+        "congestion": congestion,
+        "vehicles": [],
+        "persons": [],
+        "violations": [],
+        "plates": [],
+        "counts": {},
+        "fps": 0.0,
+        "proc_ms": 0.0,
+        "frame_b64": _encode_frame_b64(frame_bgr),
+        "analysis_error": error_msg,
+    }
+
 # Try to import real engine, fallback to old simulation if not available
 try:
     from app.data.real_video_engine import RealVideoEngine
@@ -65,39 +115,15 @@ def analyze_frame(frame_bgr: np.ndarray, frame_id: int, total_frames: int) -> di
             return engine.analyze_frame(frame_bgr, frame_id, total_frames)  # type: ignore
         except Exception as e:
             print(f"Real engine analysis failed: {e}")
-            # Fallback to empty detection
-            return {
-                "frame_id": frame_id,
-                "total": total_frames,
-                "n_vehicles": 0,
-                "density": 0.0,
-                "congestion": "LOW",
-                "vehicles": [],
-                "persons": [],
-                "violations": [],
-                "plates": [],
-                "counts": {},
-                "fps": 0.0,
-                "proc_ms": 0.0,
-                "frame_b64": "",
-            }
+            return _fallback_frame_payload(
+                frame_bgr,
+                frame_id,
+                total_frames,
+                error_msg=f"AI pipeline unavailable: {e}",
+            )
     
-    # Fallback: return empty detection
-    return {
-        "frame_id": frame_id,
-        "total": total_frames,
-        "n_vehicles": 0,
-        "density": 0.0,
-        "congestion": "LOW",
-        "vehicles": [],
-        "persons": [],
-        "violations": [],
-        "plates": [],
-        "counts": {},
-        "fps": 0.0,
-        "proc_ms": 0.0,
-        "frame_b64": "",
-    }
+    # Fallback payload when real engine is unavailable.
+    return _fallback_frame_payload(frame_bgr, frame_id, total_frames, error_msg="Real AI engine unavailable")
 
 
 def get_frame_at(video_path: str, frame_index: int) -> Optional[Dict]:
