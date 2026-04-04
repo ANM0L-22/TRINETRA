@@ -9,8 +9,11 @@ torchvision>=0.15.0
 numpy>=1.24.0
 
 # ── OCR (for real number plate recognition) ──────────────────
-paddlepaddle>=2.6.1
-paddleocr>=2.7.3
+# PaddleOCR currently requires Python versions with published PaddlePaddle wheels.
+# Keep these optional so Streamlit deploys on unsupported interpreters, while
+# still enabling OCR on Python 3.11/3.12 where wheels are available.
+paddlepaddle>=2.6.1,<3.0.0; python_version < "3.13"
+paddleocr>=2.7.3; python_version < "3.13"
 
 # ── Tracking ─────────────────────────────────────────────────
 deep-sort-realtime>=1.3.2
