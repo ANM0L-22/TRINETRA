@@ -9,6 +9,7 @@ Layer 3:           Full scrollable analytics — charts, class dist, density, de
 import os
 import time
 import tempfile
+import base64
 import random
 import math
 from datetime import datetime
@@ -21,6 +22,12 @@ try:
 except Exception:
     cv2 = None
     _CV2_AVAILABLE = False
+try:
+    from PIL import Image
+    import io
+except Exception:
+    Image = None
+    io = None
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
@@ -93,6 +100,21 @@ def _append_violations(violations):
             st.session_state.viol_log.append(v)
 
 
+def _load_image_preview_b64(image_path: Path) -> str:
+    """Load a previewable JPEG base64 string from an image file."""
+    if Image is None or io is None:
+        return ""
+    try:
+        with Image.open(image_path) as img:
+            img = img.convert("RGB")
+            buffer = io.BytesIO()
+            img.save(buffer, format="JPEG", quality=90)
+            return base64.b64encode(buffer.getvalue()).decode()
+    except Exception as e:
+        print(f"Image preview fallback failed: {e}")
+        return ""
+
+
 # ── session init ──────────────────────────────────────────────
 def _init():
     defaults = {
@@ -108,6 +130,7 @@ def _init():
         "frame2_data":    None,
         "frame_slider":   0,
         "is_image":       False,
+        "image_preview_b64": "",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -251,6 +274,7 @@ def dashboard():
                 st.session_state.video_path = str(save_path)
                 st.session_state.video_info = None  # No video info for images
                 st.session_state.bulk_ready = True
+                st.session_state.image_preview_b64 = _load_image_preview_b64(save_path)
                 # Analyze the image as frame 0
                 if cv2 is not None:
                     frame_bgr = cv2.imread(str(save_path))
@@ -263,8 +287,42 @@ def dashboard():
                             st.session_state.viol_log = []
                             st.session_state.viol_keys = set()
                             _append_violations(fd.get("violations", []))
+                    elif st.session_state.image_preview_b64:
+                        st.session_state.frame_data = {
+                            "frame_id": 0,
+                            "total": 1,
+                            "n_vehicles": 0,
+                            "density": 0.0,
+                            "congestion": "LOW",
+                            "vehicles": [],
+                            "persons": [],
+                            "violations": [],
+                            "plates": [],
+                            "counts": {},
+                            "fps": 0.0,
+                            "proc_ms": 0.0,
+                            "frame_b64": st.session_state.image_preview_b64,
+                            "analysis_error": "Image preview rendered via Pillow fallback",
+                        }
                 else:
                     st.error("OpenCV is not available, so image analysis cannot run in this deployment.")
+                    if st.session_state.image_preview_b64:
+                        st.session_state.frame_data = {
+                            "frame_id": 0,
+                            "total": 1,
+                            "n_vehicles": 0,
+                            "density": 0.0,
+                            "congestion": "LOW",
+                            "vehicles": [],
+                            "persons": [],
+                            "violations": [],
+                            "plates": [],
+                            "counts": {},
+                            "fps": 0.0,
+                            "proc_ms": 0.0,
+                            "frame_b64": st.session_state.image_preview_b64,
+                            "analysis_error": "Image preview rendered via Pillow fallback",
+                        }
                 st.session_state.current_frame = 0
                 reset_engine_state()
             else:
@@ -303,6 +361,8 @@ def dashboard():
             # For images, show analyzed image directly
             fd = st.session_state.get("frame_data", {}) or {}
             b64 = fd.get("frame_b64", "")
+            if not b64:
+                b64 = st.session_state.get("image_preview_b64", "")
             if b64:
                 st.markdown(f"""
                 <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
