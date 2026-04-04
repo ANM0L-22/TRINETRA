@@ -28,7 +28,7 @@ class RealOCRPipeline:
         if use_paddleocr:
             try:
                 from paddleocr import PaddleOCR
-                self.ocr = PaddleOCR(use_angle_cls=True, lang='en')
+                self.ocr = PaddleOCR(use_textline_orientation=True, lang='en')
             except ImportError:
                 print("PaddleOCR not available, will use fallback")
                 self.use_paddleocr = False
@@ -59,7 +59,7 @@ class RealOCRPipeline:
         
         if self.use_paddleocr and self.ocr:
             try:
-                result = self.ocr.ocr(thresh, cls=False)
+                result = self.ocr.ocr(thresh)
                 texts = []
                 conf_sum = 0
                 

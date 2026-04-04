@@ -33,8 +33,16 @@ html, body, [class*="css"] {
   color: var(--text) !important;
 }
 
-/* ── Hide Streamlit chrome ── */
-#MainMenu, footer, header { visibility: hidden; }
+/* ── Hide Streamlit chrome (keep header/toggle usable) ── */
+#MainMenu, footer { visibility: hidden; }
+header {
+  visibility: visible !important;
+  background: transparent !important;
+}
+[data-testid="collapsedControl"] {
+  display: flex !important;
+  visibility: visible !important;
+}
 .block-container { padding: 0.5rem 1.5rem 2rem !important; max-width: 100% !important; }
 [data-testid="stAppViewContainer"] { background: var(--bg) !important; }
 [data-testid="stSidebar"] {

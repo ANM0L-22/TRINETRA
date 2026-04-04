@@ -68,7 +68,7 @@ class OCRReader:
         try:
             from paddleocr import PaddleOCR
             self.ocr = PaddleOCR(
-                use_angle_cls=True,
+                use_textline_orientation=True,
                 lang='en',
                 use_gpu=use_gpu,
                 show_log=False,
@@ -132,7 +132,7 @@ class OCRReader:
         try:
             if self.ocr is None:
                 return None
-            result = self.ocr.ocr(img, cls=True)
+            result = self.ocr.ocr(img)
             if not result or not result[0]:
                 return None
 
