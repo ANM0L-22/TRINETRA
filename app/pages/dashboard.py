@@ -268,6 +268,7 @@ def dashboard():
             ext = save_path.suffix.lower()
             is_image = ext in [".jpg", ".jpeg", ".png"]
             st.session_state.is_image = is_image
+            st.session_state.image_preview_b64 = ""
             
             if is_image:
                 # For images, treat as single frame
@@ -363,25 +364,38 @@ def dashboard():
             b64 = fd.get("frame_b64", "")
             if not b64:
                 b64 = st.session_state.get("image_preview_b64", "")
-            if b64:
-                st.markdown(f"""
-                <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
-                            overflow:hidden;position:relative;">
-                    <img src="data:image/jpeg;base64,{b64}"
-                         style="width:100%;display:block;">
-                </div>
-                """, unsafe_allow_html=True)
+            try:
+                if st.session_state.get("video_path"):
+                    st.image(st.session_state.video_path, width="stretch")
+                elif b64:
+                    st.markdown(f"""
+                    <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
+                                overflow:hidden;position:relative;">
+                        <img src="data:image/jpeg;base64,{b64}"
+                             style="width:100%;display:block;">
+                    </div>
+                    """, unsafe_allow_html=True)
+            except Exception as e:
+                print(f"Streamlit image render failed: {e}")
+                if b64:
+                    st.markdown(f"""
+                    <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
+                                overflow:hidden;position:relative;">
+                        <img src="data:image/jpeg;base64,{b64}"
+                             style="width:100%;display:block;">
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                hud_den = fd.get("density", 0)
-                hud_veh = fd.get("n_vehicles", 0)
-                hud_cng = fd.get("congestion", "—")
-                st.markdown(f"""
-                <div style="text-align:center;font-family:'JetBrains Mono',monospace;
-                            font-size:11px;color:#64748b;padding:4px 0;">
-                    Static Image Analysis &nbsp;|&nbsp; Vehicles: {hud_veh}
-                    &nbsp;|&nbsp; Congestion: {int(hud_den*100)}%
-                </div>
-                """, unsafe_allow_html=True)
+            hud_den = fd.get("density", 0)
+            hud_veh = fd.get("n_vehicles", 0)
+            hud_cng = fd.get("congestion", "—")
+            st.markdown(f"""
+            <div style="text-align:center;font-family:'JetBrains Mono',monospace;
+                        font-size:11px;color:#64748b;padding:4px 0;">
+                Static Image Analysis &nbsp;|&nbsp; Vehicles: {hud_veh}
+                &nbsp;|&nbsp; Congestion: {int(hud_den*100)}%
+            </div>
+            """, unsafe_allow_html=True)
         else:
             # Video processing
             # Frame selector
