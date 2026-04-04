@@ -4,7 +4,11 @@ Provides unified interface to real YOLOv8 + OCR + Violation detection.
 Replaces the old random simulation engine with production-ready code.
 """
 
-import cv2
+try:
+    import cv2  # type: ignore
+except Exception as e:
+    cv2 = None  # type: ignore
+    print(f"OpenCV import unavailable in video_engine: {e}")
 import numpy as np
 import base64
 from typing import Optional, Dict, List
@@ -104,6 +108,8 @@ def get_frame_at(video_path: str, frame_index: int) -> Optional[Dict]:
             print(f"Frame retrieval failed: {e}")
     
     # Fallback
+    if cv2 is None:
+        return None
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return None
@@ -126,6 +132,8 @@ def get_video_info(video_path: str) -> Dict:
             print(f"Video info retrieval failed: {e}")
     
     # Fallback
+    if cv2 is None:
+        return {}
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         return {}
