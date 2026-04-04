@@ -9,7 +9,7 @@ Layer 3:           Full scrollable analytics — charts, class dist, density, de
 import os
 import time
 import tempfile
-import base64
+import threading
 import random
 import math
 from datetime import datetime
@@ -22,21 +22,32 @@ try:
 except Exception:
     cv2 = None
     _CV2_AVAILABLE = False
-try:
-    from PIL import Image
-    import io
-except Exception:
-    Image = None
-    io = None
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
 
 from app.data.video_engine import (
     analyze_frame, get_frame_at, get_video_info, bulk_analyze,
-    reset_engine_state,
 )
 from app.components.styles import get_global_css, section_header, alert_card, pipeline_strip
+
+try:
+    import app.data.video_engine as _video_engine_mod
+except Exception:
+    _video_engine_mod = None
+
+
+def reset_engine_state():
+    """Backward-compatible reset wrapper if engine exposes reset hook."""
+    reset_fn = getattr(_video_engine_mod, "reset_engine_state", None)
+    if callable(reset_fn):
+        reset_fn()
+
+
+def _safe_imread(path: str):
+    if cv2 is None:
+        return None
+    return cv2.imread(path)
 
 UPLOAD_DIR = Path("static/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -48,6 +59,16 @@ CLS_COLORS  = {"car": "#00e5ff", "bus": "#ffb400", "bike": "#7c3aed",
                "truck": "#ff8800", "auto": "#00e676"}
 VIOL_ICONS  = {"Helmet Violation": "🪖", "Wrong-side Driving": "↩️",
                "Mobile Usage": "📱", "Tampered Plate": "🚫", "No Seatbelt": "🔒"}
+
+VIOL_ICONS.update({
+    "no_helmet": "🪖",
+    "wrong_side_driving": "↩️",
+    "red_light_violation": "🚦",
+    "tampered_plate": "🚫",
+    "blackened_window": "🕶️",
+    "no_seatbelt": "🔒",
+    "mobile_usage": "📱",
+})
 
 
 def _dark_fig():
@@ -100,31 +121,6 @@ def _append_violations(violations):
             st.session_state.viol_log.append(v)
 
 
-def _load_image_preview_b64(image_path: Path) -> str:
-    """Load a previewable JPEG base64 string from an image file."""
-    if Image is None or io is None:
-        return ""
-    try:
-        with Image.open(image_path) as img:
-            img = img.convert("RGB")
-            buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=90)
-            return base64.b64encode(buffer.getvalue()).decode()
-    except Exception as e:
-        print(f"Image preview fallback failed: {e}")
-        return ""
-
-
-def _set_image_analysis_state(frame_data: dict) -> None:
-    """Store a single-image analysis result in the same shape used by video analysis."""
-    st.session_state.frame_data = frame_data
-    st.session_state.bulk_data = [frame_data]
-    st.session_state.bulk_ready = True
-    st.session_state.viol_log = []
-    st.session_state.viol_keys = set()
-    _append_violations(frame_data.get("violations", []))
-
-
 # ── session init ──────────────────────────────────────────────
 def _init():
     defaults = {
@@ -140,7 +136,6 @@ def _init():
         "frame2_data":    None,
         "frame_slider":   0,
         "is_image":       False,
-        "image_preview_b64": "",
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -278,58 +273,26 @@ def dashboard():
             ext = save_path.suffix.lower()
             is_image = ext in [".jpg", ".jpeg", ".png"]
             st.session_state.is_image = is_image
-            st.session_state.image_preview_b64 = ""
             
             if is_image:
                 # For images, treat as single frame
                 st.session_state.video_path = str(save_path)
                 st.session_state.video_info = None  # No video info for images
                 st.session_state.bulk_ready = True
-                st.session_state.image_preview_b64 = _load_image_preview_b64(save_path)
                 # Analyze the image as frame 0
                 if cv2 is not None:
-                    frame_bgr = cv2.imread(str(save_path))
+                    frame_bgr = _safe_imread(str(save_path))
                     if frame_bgr is not None:
                         fd = analyze_frame(frame_bgr, 0, 1)
                         if fd:
                             fd["frame_id"] = 0
-                            _set_image_analysis_state(fd)
-                    elif st.session_state.image_preview_b64:
-                        _set_image_analysis_state({
-                            "frame_id": 0,
-                            "total": 1,
-                            "n_vehicles": 0,
-                            "density": 0.0,
-                            "congestion": "LOW",
-                            "vehicles": [],
-                            "persons": [],
-                            "violations": [],
-                            "plates": [],
-                            "counts": {},
-                            "fps": 0.0,
-                            "proc_ms": 0.0,
-                            "frame_b64": st.session_state.image_preview_b64,
-                            "analysis_error": "Image preview rendered via Pillow fallback",
-                        })
+                            st.session_state.frame_data = fd
+                            st.session_state.bulk_data = [fd]  # Single frame data
+                            st.session_state.viol_log = []
+                            st.session_state.viol_keys = set()
+                            _append_violations(fd.get("violations", []))
                 else:
                     st.error("OpenCV is not available, so image analysis cannot run in this deployment.")
-                    if st.session_state.image_preview_b64:
-                        _set_image_analysis_state({
-                            "frame_id": 0,
-                            "total": 1,
-                            "n_vehicles": 0,
-                            "density": 0.0,
-                            "congestion": "LOW",
-                            "vehicles": [],
-                            "persons": [],
-                            "violations": [],
-                            "plates": [],
-                            "counts": {},
-                            "fps": 0.0,
-                            "proc_ms": 0.0,
-                            "frame_b64": st.session_state.image_preview_b64,
-                            "analysis_error": "Image preview rendered via Pillow fallback",
-                        })
                 st.session_state.current_frame = 0
                 reset_engine_state()
             else:
@@ -343,12 +306,12 @@ def dashboard():
                 st.session_state.viol_log = []
                 st.session_state.viol_keys = set()
                 reset_engine_state()
-                # Run bulk analysis on the main script context; touching session_state
-                # from background threads causes missing ScriptRunContext on Streamlit Cloud.
-                with st.spinner("Analyzing uploaded video samples..."):
+                # Bulk analyze in thread
+                def _bg():
                     data = bulk_analyze(str(save_path), max_samples=180)
-                st.session_state.bulk_data = data
-                st.session_state.bulk_ready = True
+                    st.session_state["bulk_data"] = data
+                    st.session_state["bulk_ready"] = True
+                threading.Thread(target=_bg, daemon=True).start()
             st.rerun()
 
     # ── LAYER 1 CENTER: Video/Image panel ───────────────────────────
@@ -368,40 +331,25 @@ def dashboard():
             # For images, show analyzed image directly
             fd = st.session_state.get("frame_data", {}) or {}
             b64 = fd.get("frame_b64", "")
-            if not b64:
-                b64 = st.session_state.get("image_preview_b64", "")
-            try:
-                if st.session_state.get("video_path") and Image is not None:
-                    st.image(Image.open(st.session_state.video_path), use_container_width=True)
-                elif b64:
-                    st.markdown(f"""
-                    <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
-                                overflow:hidden;position:relative;">
-                        <img src="data:image/jpeg;base64,{b64}"
-                             style="width:100%;display:block;">
-                    </div>
-                    """, unsafe_allow_html=True)
-            except Exception as e:
-                print(f"Streamlit image render failed: {e}")
-                if b64:
-                    st.markdown(f"""
-                    <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
-                                overflow:hidden;position:relative;">
-                        <img src="data:image/jpeg;base64,{b64}"
-                             style="width:100%;display:block;">
-                    </div>
-                    """, unsafe_allow_html=True)
+            if b64:
+                st.markdown(f"""
+                <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
+                            overflow:hidden;position:relative;">
+                    <img src="data:image/jpeg;base64,{b64}"
+                         style="width:100%;display:block;">
+                </div>
+                """, unsafe_allow_html=True)
 
-            hud_den = fd.get("density", 0)
-            hud_veh = fd.get("n_vehicles", 0)
-            hud_cng = fd.get("congestion", "—")
-            st.markdown(f"""
-            <div style="text-align:center;font-family:'JetBrains Mono',monospace;
-                        font-size:11px;color:#64748b;padding:4px 0;">
-                Static Image Analysis &nbsp;|&nbsp; Vehicles: {hud_veh}
-                &nbsp;|&nbsp; Congestion: {int(hud_den*100)}%
-            </div>
-            """, unsafe_allow_html=True)
+                hud_den = fd.get("density", 0)
+                hud_veh = fd.get("n_vehicles", 0)
+                hud_cng = fd.get("congestion", "—")
+                st.markdown(f"""
+                <div style="text-align:center;font-family:'JetBrains Mono',monospace;
+                            font-size:11px;color:#64748b;padding:4px 0;">
+                    Static Image Analysis &nbsp;|&nbsp; Vehicles: {hud_veh}
+                    &nbsp;|&nbsp; Congestion: {int(hud_den*100)}%
+                </div>
+                """, unsafe_allow_html=True)
         else:
             # Video processing
             # Frame selector
@@ -439,8 +387,6 @@ def dashboard():
                                 if key not in st.session_state.viol_keys:
                                     st.session_state.viol_keys.add(key)
                                     st.session_state.viol_log.append(v)
-                        else:
-                            st.warning("Frame analysis failed: unable to decode this frame in deployment environment.")
 
                     fd = st.session_state.get("frame_data", {}) or {}
                     b64 = fd.get("frame_b64", "")
@@ -452,12 +398,6 @@ def dashboard():
                                  style="width:100%;display:block;">
                         </div>
                         """, unsafe_allow_html=True)
-                    else:
-                        err_msg = fd.get("analysis_error")
-                        if err_msg:
-                            st.warning(f"Frame analysis degraded mode: {err_msg}")
-                        else:
-                            st.warning("No renderable frame produced for this selection.")
 
                     hud_den = fd.get("density", 0)
                     hud_veh = fd.get("n_vehicles", 0)
@@ -484,16 +424,14 @@ def dashboard():
         if not is_image:
             c1, c2, c3 = st.columns(3)
             with c1:
-                if st.button("▶ Analyse Frame", width="stretch", key="btn_anal"):
+                if st.button("▶ Analyse Frame", use_container_width=True, key="btn_anal"):
                     if st.session_state.video_path:
                         fd_new = get_frame_at(st.session_state.video_path, frame_num)
                         if fd_new:
                             st.session_state.frame_data = fd_new
                             _append_violations(fd_new.get("violations", []))
-                        else:
-                            st.error("Could not analyze selected frame. Try another frame or re-upload with H.264 MP4.")
             with c2:
-                if st.button("⏭ Next Frame", width="stretch", key="btn_next"):
+                if st.button("⏭ Next Frame", use_container_width=True, key="btn_next"):
                     nxt = min(frame_num + 1, total_frames - 1)
                     st.session_state.current_frame = nxt
                     st.session_state.frame_data = None
@@ -502,27 +440,28 @@ def dashboard():
                         if fd_next:
                             st.session_state.frame_data = fd_next
                             _append_violations(fd_next.get("violations", []))
-                        else:
-                            st.error("Next frame could not be decoded in this environment.")
             with c3:
-                if st.button("🔄 Refresh All", width="stretch", key="btn_ref"):
+                if st.button("🔄 Refresh All", use_container_width=True, key="btn_ref"):
                     st.session_state.frame_data = None
                     st.session_state.viol_log = []
                     st.session_state.viol_keys = set()
         else:
             # For images, single re-analyse button
-            if st.button("🔄 Re-analyse Image", width="stretch", key="btn_reanal_img"):
+            if st.button("🔄 Re-analyse Image", use_container_width=True, key="btn_reanal_img"):
                 if st.session_state.video_path:
-                    frame_bgr = cv2.imread(st.session_state.video_path) if cv2 is not None else None
-                    if frame_bgr is not None:
-                        fd_new = analyze_frame(frame_bgr, 0, 1)
-                        if fd_new:
-                            fd_new["frame_id"] = 0
-                            st.session_state.frame_data = fd_new
-                            st.session_state.bulk_data = [fd_new]
-                            st.session_state.viol_log = []
-                            st.session_state.viol_keys = set()
-                            _append_violations(fd_new.get("violations", []))
+                    if cv2 is None:
+                        st.error("OpenCV is not available, so image analysis cannot run in this deployment.")
+                    else:
+                        frame_bgr = _safe_imread(st.session_state.video_path)
+                        if frame_bgr is not None:
+                            fd_new = analyze_frame(frame_bgr, 0, 1)
+                            if fd_new:
+                                fd_new["frame_id"] = 0
+                                st.session_state.frame_data = fd_new
+                                st.session_state.bulk_data = [fd_new]
+                                st.session_state.viol_log = []
+                                st.session_state.viol_keys = set()
+                                _append_violations(fd_new.get("violations", []))
 
         # Pipeline strip (collapsed by default)
         with st.expander("AI Pipeline (Video→Detect→Track→OCR→Violations→Analyze→Dashboard)", expanded=False):
@@ -742,8 +681,40 @@ def dashboard():
         <div class="panel-head" style="font-size:11px;margin-top:4px;">🏙️ Traffic Analytics</div>
         """, unsafe_allow_html=True)
 
+        is_image_mode = bool(st.session_state.get("is_image", False))
         bulk = st.session_state.bulk_data
-        if bulk:
+        if is_image_mode:
+            fd_img = st.session_state.get("frame_data", {}) or {}
+            img_vehicles = int(fd_img.get("n_vehicles", 0))
+            img_density_pct = int(float(fd_img.get("density", 0.0)) * 100)
+            img_congestion = fd_img.get("congestion", "LOW")
+            img_violations = len(fd_img.get("violations", []))
+            cong_color = CONG_COLOR.get(img_congestion, "#00e5ff")
+            st.markdown(f"""
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+                <div class="vcard" style="margin:0;">
+                    <div class="stat-key">VEHICLES</div>
+                    <div class="stat-val" style="color:#00e5ff;">{img_vehicles}</div>
+                </div>
+                <div class="vcard" style="margin:0;">
+                    <div class="stat-key">VIOLATIONS</div>
+                    <div class="stat-val" style="color:#ff3c3c;">{img_violations}</div>
+                </div>
+                <div class="vcard" style="margin:0;">
+                    <div class="stat-key">CONGESTION</div>
+                    <div class="stat-val" style="color:{cong_color};">{img_density_pct}%</div>
+                </div>
+                <div class="vcard" style="margin:0;">
+                    <div class="stat-key">LEVEL</div>
+                    <div class="stat-val" style="color:{cong_color};">{img_congestion}</div>
+                </div>
+            </div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748b;
+                        margin-top:8px;letter-spacing:1px;">
+                Single image mode: trend charts are hidden because no timeline exists.
+            </div>
+            """, unsafe_allow_html=True)
+        elif bulk:
             vc_y = [d["n_vehicles"] for d in bulk]
             vc_x = list(range(len(vc_y)))
             fig_vc = go.Figure(go.Scatter(
@@ -1029,55 +1000,61 @@ def dashboard():
             </div>
             """, unsafe_allow_html=True)
 
-    # Row A: Vehicle count timeline + Density trend
-    ra1, ra2 = st.columns(2)
-    if bulk:
-        with ra1:
-            vc_y = [d["n_vehicles"] for d in bulk]
-            vc_x = list(range(len(vc_y)))
-            fig_a1 = go.Figure()
-            fig_a1.add_trace(go.Scatter(
-                x=vc_x, y=vc_y, name="Total",
-                mode="lines", line=dict(color="#00e5ff", width=2.5),
-                fill="tozeroy", fillcolor="rgba(0,229,255,0.06)",
-            ))
-            fig_a1.update_layout(**_dark_fig(), height=250,  # type: ignore
-                                  title=dict(text="Vehicle Count Over Time",
-                                             font=dict(size=12, color="#e2e8f0")))
-            st.plotly_chart(fig_a1, width='stretch',
-                             config={"displayModeBar": False}, key="vc_l3")
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-        with ra2:
-            den_y = [d["density"]*100 for d in bulk]
-            colors_d = [CONG_COLOR.get(d["congestion"], "#00e5ff") for d in bulk]
-            fig_a2 = go.Figure(go.Scatter(
-                x=vc_x, y=den_y, mode="lines",
-                line=dict(color="#7c3aed", width=2.5),
-                fill="tozeroy", fillcolor="rgba(124,58,237,0.07)",
-            ))
-            # Threshold lines
-            for y_v, clr, lbl in [(25,"rgba(0,230,118,.5)","LOW"),
-                                    (50,"rgba(255,180,0,.5)","MEDIUM"),
-                                    (75,"rgba(255,136,0,.5)","HIGH")]:
-                fig_a2.add_hline(y=y_v, line=dict(color=clr, dash="dot", width=1),
-                                  annotation_text=lbl,
-                                  annotation_font=dict(size=9, color="#64748b"))
-            fig_a2.update_layout({
-                                  **_dark_fig(),
-                                  "height": 250,
-                                  "title": dict(text="Traffic Density Trend (%)",
-                                                 font=dict(size=12, color="#e2e8f0")),
-                                  "yaxis": dict(
-                                      showgrid=True,
-                                      gridcolor="rgba(0,229,255,0.06)",
-                                      zeroline=False,
-                                      range=[0, 105],
-                                  )
-                                  })
-            st.plotly_chart(fig_a2, width='stretch',
-                             config={"displayModeBar": False}, key="den_l3")
+    is_image_mode_l3 = bool(st.session_state.get("is_image", False))
+
+    # Row A: Vehicle count timeline + Density trend
+    if is_image_mode_l3:
+        st.info("Image mode: timeline charts are hidden (no time-series for a single frame).")
     else:
-        st.info("Upload a video to see full analytics")
+        ra1, ra2 = st.columns(2)
+        if bulk:
+            with ra1:
+                vc_y = [d["n_vehicles"] for d in bulk]
+                vc_x = list(range(len(vc_y)))
+                fig_a1 = go.Figure()
+                fig_a1.add_trace(go.Scatter(
+                    x=vc_x, y=vc_y, name="Total",
+                    mode="lines", line=dict(color="#00e5ff", width=2.5),
+                    fill="tozeroy", fillcolor="rgba(0,229,255,0.06)",
+                ))
+                fig_a1.update_layout(**_dark_fig(), height=250,  # type: ignore
+                                      title=dict(text="Vehicle Count Over Time",
+                                                 font=dict(size=12, color="#e2e8f0")))
+                st.plotly_chart(fig_a1, width='stretch',
+                                 config={"displayModeBar": False}, key="vc_l3")
+
+            with ra2:
+                den_y = [d["density"]*100 for d in bulk]
+                colors_d = [CONG_COLOR.get(d["congestion"], "#00e5ff") for d in bulk]
+                fig_a2 = go.Figure(go.Scatter(
+                    x=vc_x, y=den_y, mode="lines",
+                    line=dict(color="#7c3aed", width=2.5),
+                    fill="tozeroy", fillcolor="rgba(124,58,237,0.07)",
+                ))
+                for y_v, clr, lbl in [(25,"rgba(0,230,118,.5)","LOW"),
+                                      (50,"rgba(255,180,0,.5)","MEDIUM"),
+                                      (75,"rgba(255,136,0,.5)","HIGH")]:
+                    fig_a2.add_hline(y=y_v, line=dict(color=clr, dash="dot", width=1),
+                                     annotation_text=lbl,
+                                     annotation_font=dict(size=9, color="#64748b"))
+                fig_a2.update_layout({
+                    **_dark_fig(),
+                    "height": 250,
+                    "title": dict(text="Traffic Density Trend (%)",
+                                   font=dict(size=12, color="#e2e8f0")),
+                    "yaxis": dict(
+                        showgrid=True,
+                        gridcolor="rgba(0,229,255,0.06)",
+                        zeroline=False,
+                        range=[0, 105],
+                    )
+                })
+                st.plotly_chart(fig_a2, width='stretch',
+                                 config={"displayModeBar": False}, key="den_l3")
+        else:
+            st.info("Upload a video to see full analytics")
 
     # Row B: Violation bar + Class pie + Congestion dist
     rb1, rb2, rb3 = st.columns(3)

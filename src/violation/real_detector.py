@@ -13,6 +13,7 @@ import cv2
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Set
 from collections import defaultdict
+from pathlib import Path
 
 
 class RealViolationDetector:
@@ -23,6 +24,7 @@ class RealViolationDetector:
         "no_seatbelt",
         "wrong_side_driving",
         "tampered_plate",
+        "blackened_window",
         "red_light_violation",
         "mobile_usage",
         "speeding",
@@ -33,6 +35,19 @@ class RealViolationDetector:
         self.person_tracker = defaultdict(dict)  # Track persons across frames
         self.vehicle_tracker = defaultdict(dict)  # Track vehicles across frames
         self.reported_violations: Dict[str, Set[str]] = defaultdict(set)
+        self.scene_reported: Dict[int, Set[str]] = defaultdict(set)
+        self.violation_cls_model = None
+
+        # Optional scene-level classifier trained on violation classes.
+        try:
+            from ultralytics import YOLO
+
+            base_dir = Path(__file__).resolve().parents[2]
+            cls_weights = base_dir / "models" / "weights" / "violation_cls_best.pt"
+            if cls_weights.exists():
+                self.violation_cls_model = YOLO(str(cls_weights))
+        except Exception:
+            self.violation_cls_model = None
 
     def _get_violation_entity_key(self, vehicle: Optional[Dict] = None, plate_info: Optional[Dict] = None) -> str:
         if vehicle is not None:
@@ -103,7 +118,7 @@ class RealViolationDetector:
         violations.extend(self._detect_no_helmet(frame, vehicles, persons, plates, frame_id))
         
         # 2. Detect tampered plate violations
-        violations.extend(self._detect_tampered_plate(plates, frame_id))
+        violations.extend(self._detect_tampered_plate(plates))
         
         # 3. Detect wrong-side driving
         if wrong_side_lane:
@@ -115,8 +130,67 @@ class RealViolationDetector:
         
         # 5. Detect no seatbelt (simplified based on posture)
         violations.extend(self._detect_no_seatbelt(frame, persons, frame_id))
+
+        # 6. Detect blackened/tinted windows
+        violations.extend(self._detect_blackened_window(vehicles, frame, frame_id))
+
+        # 7. Scene-level classifier signals (trained classes).
+        violations.extend(self._detect_scene_level_violations(frame, frame_id))
         
         return violations
+
+    def _detect_scene_level_violations(self, frame: np.ndarray, frame_id: int) -> List[Dict]:
+        """Use trained image-level classifier to emit scene violations with confidence."""
+        if self.violation_cls_model is None:
+            return []
+
+        out: List[Dict] = []
+        try:
+            results = self.violation_cls_model.predict(frame, verbose=False, device="cpu")
+            if not results:
+                return out
+
+            r = results[0]
+            probs = getattr(r, "probs", None)
+            names = getattr(r, "names", {}) or {}
+            if probs is None:
+                return out
+
+            top_idx = int(probs.top1)
+            top_conf = float(probs.top1conf)
+            pred = str(names.get(top_idx, "")).strip().lower()
+            valid_preds = {
+                "no_helmet",
+                "red_light_violation",
+                "wrong_side_driving",
+                "tampered_plate",
+                "blackened_window",
+            }
+            if pred not in valid_preds or top_conf < 0.60:
+                return out
+
+            # Emit at most one scene-level event per violation type per frame.
+            if pred in self.scene_reported[frame_id]:
+                return out
+            self.scene_reported[frame_id].add(pred)
+
+            h, w = frame.shape[:2]
+            severity = "critical" if pred in {"no_helmet", "wrong_side_driving", "red_light_violation"} else "high"
+            out.append({
+                "type": pred,
+                "severity": severity,
+                "confidence": round(top_conf, 3),
+                "detected_bbox": [0, 0, w - 1, h - 1],
+                "track_id": None,
+                "plate": "UNKNOWN",
+                "frame_id": frame_id,
+                "event_time": datetime.now().strftime("%H:%M:%S"),
+                "description": f"Scene-level classifier flagged {pred}",
+            })
+        except Exception:
+            return []
+
+        return out
     
     def _find_plate_for_vehicle(self, vehicle_bbox: List[int], plates: List[Dict]) -> str:
         """Return best matching plate for a vehicle bbox."""
@@ -194,25 +268,31 @@ class RealViolationDetector:
         
         return violations
     
-    def _detect_tampered_plate(self, plates: List[Dict], frame_id: int) -> List[Dict]:
+    def _detect_tampered_plate(self, plates: List[Dict]) -> List[Dict]:
         """Detect tampered/invalid number plates."""
         violations = []
         
         for plate_info in plates:
-            if plate_info.get("valid") is False and plate_info.get("confidence", 0) > 0.3:
+            is_model_tampered = bool(plate_info.get("is_tampered", False))
+            is_ocr_suspicious = plate_info.get("valid") is False and plate_info.get("confidence", 0) > 0.3
+            if is_model_tampered or is_ocr_suspicious:
                 entity_key = self._get_violation_entity_key(plate_info=plate_info)
                 if not self._should_report_violation(entity_key, "tampered_plate"):
                     continue
                 violations.append({
                     "type": "tampered_plate",
                     "severity": "high",
-                    "confidence": 0.85,
+                    "confidence": 0.92 if is_model_tampered else 0.85,
                     "detected_bbox": plate_info.get("vehicle_bbox", []),
                     "track_id": plate_info.get("track_id"),
                     "plate": plate_info.get("raw_text", "UNKNOWN"),
                     "frame_id": frame_id,
                     "event_time": datetime.now().strftime("%H:%M:%S"),
-                    "description": f"Number plate unreadable or tampered: {plate_info.get('raw_text', 'Unknown')}",
+                    "description": (
+                        f"Number plate flagged as tampered by model: {plate_info.get('raw_text', 'Unknown')}"
+                        if is_model_tampered else
+                        f"Number plate unreadable or tampered: {plate_info.get('raw_text', 'Unknown')}"
+                    ),
                 })
         
         return violations
@@ -303,6 +383,77 @@ class RealViolationDetector:
         # This is a simplified check - in production would use pose estimation
         # For now, return empty list as it requires complex pose analysis
         
+        return violations
+
+    def _detect_blackened_window(
+        self,
+        vehicles: List[Dict],
+        frame: np.ndarray,
+        frame_id: int,
+    ) -> List[Dict]:
+        """Detect likely illegal blackened/tinted windows from dark window region."""
+        violations = []
+
+        # Practical target classes where windows are visible enough.
+        candidate_classes = {"car", "bus", "truck", "auto", "auto_rickshaw"}
+
+        for vehicle in vehicles:
+            cls_name = str(vehicle.get("class", "")).lower()
+            if cls_name not in candidate_classes:
+                continue
+
+            bbox = vehicle.get("bbox", [])
+            if len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = map(int, bbox)
+            if x2 <= x1 or y2 <= y1:
+                continue
+
+            # Approximate window area in the upper-mid body of vehicle.
+            h = y2 - y1
+            w = x2 - x1
+            wx1 = x1 + int(0.12 * w)
+            wx2 = x2 - int(0.12 * w)
+            wy1 = y1 + int(0.16 * h)
+            wy2 = y1 + int(0.48 * h)
+
+            wx1 = max(0, wx1)
+            wy1 = max(0, wy1)
+            wx2 = min(frame.shape[1], wx2)
+            wy2 = min(frame.shape[0], wy2)
+            if wx2 <= wx1 or wy2 <= wy1:
+                continue
+
+            roi = frame[wy1:wy2, wx1:wx2]
+            if roi.size == 0:
+                continue
+
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            mean_intensity = float(np.mean(gray))
+            dark_ratio = float(np.mean(gray < 55))
+
+            # Conservative threshold to avoid too many false positives.
+            is_blackened = mean_intensity < 70 and dark_ratio > 0.6
+            if not is_blackened:
+                continue
+
+            entity_key = self._get_violation_entity_key(vehicle=vehicle, plate_info=None)
+            if not self._should_report_violation(entity_key, "blackened_window"):
+                continue
+
+            violations.append({
+                "type": "blackened_window",
+                "severity": "high",
+                "confidence": 0.80,
+                "detected_bbox": [wx1, wy1, wx2, wy2],
+                "related_vehicle": vehicle,
+                "track_id": vehicle.get("track_id"),
+                "plate": "UNKNOWN",
+                "frame_id": frame_id,
+                "event_time": datetime.now().strftime("%H:%M:%S"),
+                "description": "Vehicle window appears heavily darkened/tinted",
+            })
+
         return violations
     
     def _has_helmet_in_roi(self, head_roi: np.ndarray) -> bool:

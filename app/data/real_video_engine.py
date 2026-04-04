@@ -46,6 +46,21 @@ class RealVideoEngine:
                     self.violation_detector = RealViolationDetector()
             except Exception as e:
                 print(f"Failed to initialize detectors: {e}")
+
+    @staticmethod
+    def _violation_style(violation_type: str) -> Tuple[Tuple[int, int, int], str]:
+        """Return BGR color + display label for a violation type."""
+        styles = {
+            "no_helmet": ((0, 0, 255), "NO HELMET"),
+            "wrong_side_driving": ((0, 0, 255), "WRONG SIDE"),
+            "red_light_violation": ((0, 0, 255), "RED LIGHT"),
+            "tampered_plate": ((0, 140, 255), "TAMPERED PLATE"),
+            "blackened_window": ((60, 60, 255), "BLACKENED WINDOW"),
+            "no_seatbelt": ((0, 165, 255), "NO SEATBELT"),
+            "mobile_usage": ((255, 0, 255), "MOBILE USAGE"),
+            "speeding": ((255, 0, 0), "SPEEDING"),
+        }
+        return styles.get(violation_type, ((0, 0, 255), violation_type.replace("_", " ").upper()))
     
     def analyze_frame(self, frame_bgr: np.ndarray, frame_id: int, total_frames: int) -> Dict:
         """
@@ -163,13 +178,23 @@ class RealVideoEngine:
             cv2.putText(annotated, label, (x1, y1 - 5),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 128, 0), 1)
         
-        # Draw violations
+        # Draw violations (including wrong-side and other critical events)
         for violation in violations:
-            if violation["type"] == "no_helmet":
-                x1, y1, x2, y2 = violation["detected_bbox"]
-                cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 0, 255), 3)
-                cv2.putText(annotated, "NO HELMET", (x1, y1 - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            bbox = violation.get("detected_bbox", [])
+            if len(bbox) != 4:
+                continue
+            x1, y1, x2, y2 = bbox
+            color, label_text = self._violation_style(violation.get("type", "violation"))
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 3)
+            cv2.putText(
+                annotated,
+                label_text,
+                (x1, max(12, y1 - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2,
+            )
         
         # 5. Calculate metrics
         n_vehicles = len(vehicles) + len(persons)

@@ -187,7 +187,7 @@ def analytics_page():
             fig = go.Figure(go.Histogram(
                 x=speeds, nbinsx=20,
                 marker=dict(color="#00e5ff",opacity=0.75,
-                            line=dict(color="#00e5ff44",width=0.5)),
+                            line=dict(color="rgba(0,229,255,0.27)",width=0.5)),
             ))
             fig.update_layout(**_dark_fig(), height=240,  # type: ignore
                 title=dict(text="Speed Distribution (km/h)",font=dict(size=12,color="#e2e8f0")),

@@ -34,12 +34,14 @@ class PlateDetector:
     def __init__(
         self,
         weights_path: Optional[str] = None,
+        tamper_cls_weights_path: Optional[str] = None,
         conf_threshold: float = 0.40,
         device: str = 'cpu',
     ):
         self.conf_threshold = conf_threshold
         self.device = device
         self.model = None
+        self.tamper_cls_model = None
 
         if weights_path and Path(weights_path).exists():
             try:
@@ -51,6 +53,15 @@ class PlateDetector:
                 logger.warning(f"Could not load plate model: {e}. Using classical CV.")
         else:
             logger.info("Plate detector: classical CV (no plate model weights found)")
+
+        if tamper_cls_weights_path and Path(tamper_cls_weights_path).exists():
+            try:
+                from ultralytics import YOLO
+                self.tamper_cls_model = YOLO(tamper_cls_weights_path)
+                self.tamper_cls_model.to(device)
+                logger.info(f"Tamper classifier: YOLOv8-cls ({tamper_cls_weights_path})")
+            except Exception as e:
+                logger.warning(f"Could not load tamper classifier: {e}. Using heuristic tampering checks.")
 
     def detect(self, frame: np.ndarray) -> List[PlateRegion]:
         """Detect all license plates in a frame."""
@@ -156,6 +167,23 @@ class PlateDetector:
         """
         if plate_crop.size == 0:
             return False
+
+        # If a classifier is available, use it as primary source.
+        if self.tamper_cls_model is not None:
+            try:
+                res = self.tamper_cls_model.predict(plate_crop, verbose=False, device=self.device)
+                if res and len(res) > 0 and getattr(res[0], "probs", None) is not None:
+                    probs = res[0].probs
+                    top_idx = int(probs.top1)
+                    top_name = (res[0].names or {}).get(top_idx, str(top_idx)).lower()
+                    top_conf = float(probs.top1conf)
+                    if "tamper" in top_name and top_conf >= 0.5:
+                        return True
+                    if "clean" in top_name and top_conf >= 0.5:
+                        return False
+            except Exception as e:
+                logger.debug(f"Tamper classifier inference failed: {e}")
+
         gray = cv2.cvtColor(plate_crop, cv2.COLOR_BGR2GRAY)
         mean_brightness = float(np.mean(gray))
         variance = float(np.var(gray))
