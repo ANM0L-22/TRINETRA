@@ -115,6 +115,16 @@ def _load_image_preview_b64(image_path: Path) -> str:
         return ""
 
 
+def _set_image_analysis_state(frame_data: dict) -> None:
+    """Store a single-image analysis result in the same shape used by video analysis."""
+    st.session_state.frame_data = frame_data
+    st.session_state.bulk_data = [frame_data]
+    st.session_state.bulk_ready = True
+    st.session_state.viol_log = []
+    st.session_state.viol_keys = set()
+    _append_violations(frame_data.get("violations", []))
+
+
 # ── session init ──────────────────────────────────────────────
 def _init():
     defaults = {
@@ -283,13 +293,9 @@ def dashboard():
                         fd = analyze_frame(frame_bgr, 0, 1)
                         if fd:
                             fd["frame_id"] = 0
-                            st.session_state.frame_data = fd
-                            st.session_state.bulk_data = [fd]  # Single frame data
-                            st.session_state.viol_log = []
-                            st.session_state.viol_keys = set()
-                            _append_violations(fd.get("violations", []))
+                            _set_image_analysis_state(fd)
                     elif st.session_state.image_preview_b64:
-                        st.session_state.frame_data = {
+                        _set_image_analysis_state({
                             "frame_id": 0,
                             "total": 1,
                             "n_vehicles": 0,
@@ -304,11 +310,11 @@ def dashboard():
                             "proc_ms": 0.0,
                             "frame_b64": st.session_state.image_preview_b64,
                             "analysis_error": "Image preview rendered via Pillow fallback",
-                        }
+                        })
                 else:
                     st.error("OpenCV is not available, so image analysis cannot run in this deployment.")
                     if st.session_state.image_preview_b64:
-                        st.session_state.frame_data = {
+                        _set_image_analysis_state({
                             "frame_id": 0,
                             "total": 1,
                             "n_vehicles": 0,
@@ -323,7 +329,7 @@ def dashboard():
                             "proc_ms": 0.0,
                             "frame_b64": st.session_state.image_preview_b64,
                             "analysis_error": "Image preview rendered via Pillow fallback",
-                        }
+                        })
                 st.session_state.current_frame = 0
                 reset_engine_state()
             else:
@@ -365,8 +371,8 @@ def dashboard():
             if not b64:
                 b64 = st.session_state.get("image_preview_b64", "")
             try:
-                if st.session_state.get("video_path"):
-                    st.image(st.session_state.video_path, width="stretch")
+                if st.session_state.get("video_path") and Image is not None:
+                    st.image(Image.open(st.session_state.video_path), use_container_width=True)
                 elif b64:
                     st.markdown(f"""
                     <div style="border:1px solid rgba(0,229,255,0.15);border-radius:8px;
@@ -1022,8 +1028,6 @@ def dashboard():
                             color:{col_v};line-height:1.2;">{val}</div>
             </div>
             """, unsafe_allow_html=True)
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # Row A: Vehicle count timeline + Density trend
     ra1, ra2 = st.columns(2)
