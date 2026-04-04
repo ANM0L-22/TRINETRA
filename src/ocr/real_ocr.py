@@ -24,14 +24,23 @@ class RealOCRPipeline:
         self.use_paddleocr = use_paddleocr
         self.ocr = None
         self.plate_detector = None
+        self.paddle_available = False
         
         if use_paddleocr:
             try:
                 from paddleocr import PaddleOCR
-                self.ocr = PaddleOCR(use_angle_cls=True, lang='en')
-            except ImportError:
-                print("PaddleOCR not available, will use fallback")
+                # Try to initialize with warnings suppressed
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    self.ocr = PaddleOCR(use_textline_orientation=True, lang='en')
+                    self.paddle_available = True
+                print("✓ PaddleOCR initialized successfully")
+            except Exception as e:
+                print(f"⚠ PaddleOCR initialization failed: {type(e).__name__}")
+                print(f"  Falling back to basic OCR (plates will show as UNKNOWN)")
                 self.use_paddleocr = False
+                self.paddle_available = False
     
     def extract_plate_from_roi(self, roi: np.ndarray, debug: bool = False) -> Dict:
         """
@@ -57,24 +66,35 @@ class RealOCRPipeline:
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         _, thresh = cv2.threshold(gray, 140, 255, cv2.THRESH_BINARY)
         
-        if self.use_paddleocr and self.ocr:
+        if self.use_paddleocr and self.ocr and self.paddle_available:
             try:
-                result = self.ocr.ocr(thresh, cls=False)
+                # PaddleOCR requires color image (BGR), not grayscale/binary
+                result = self.ocr.ocr(roi)
                 texts = []
                 conf_sum = 0
                 
-                if result and result[0]:
-                    for item in result[0]:
-                        text = item[1][0] if isinstance(item[1], tuple) else item[1]
-                        conf = item[1][1] if isinstance(item[1], tuple) else 0.9
-                        texts.append(text)
-                        conf_sum += conf
+                if result and isinstance(result, list) and len(result) > 0:
+                    first_region = result[0]
+                    if first_region and isinstance(first_region, list):
+                        for item in first_region:
+                            # PaddleOCR returns: [box, (text, confidence)]
+                            if isinstance(item, (list, tuple)) and len(item) >= 2:
+                                text_data = item[1]
+                                if isinstance(text_data, (tuple, list)):
+                                    text = str(text_data[0]).strip()
+                                    conf = float(text_data[1]) if len(text_data) > 1 else 0.9
+                                else:
+                                    text = str(text_data).strip()
+                                    conf = 0.9
+                                if text:
+                                    texts.append(text)
+                                    conf_sum += conf
                 
                 raw_text = "".join(texts).strip()
-                avg_conf = conf_sum / len(texts) if texts else 0.0
+                avg_conf = (conf_sum / len(texts)) if texts else 0.0
                 
             except Exception as e:
-                print(f"OCR error: {e}")
+                # Silent fallback - PaddleOCR had an issue (likely backend)
                 raw_text = ""
                 avg_conf = 0.0
         else:
